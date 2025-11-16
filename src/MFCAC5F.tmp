@@ -1,0 +1,269 @@
+#include "os.h"
+#include "main.h"
+#include "oled.h"
+#include "vibro.h"
+#include "button.h"
+#include "taskman.h"
+
+extern struct system_struct sys;
+static struct os_struct os;
+
+
+void OS_ShowChildObject(OS_OBJ_TypeDef id)
+{
+	assert_param(IS_OS_OBJ_OK(id));
+	
+	os.wait_object = id;
+}
+
+
+void OS_UpdateActiveObject(void)
+{
+	os.update_obj_flag = TRUE;
+}
+
+
+void OS_ShowObject(OS_OBJ_TypeDef id)
+{
+	uint8_t i, c1, c2, char_code;
+	
+	assert_param(IS_OS_OBJ_OK(id));
+	
+	OLED_Clear();
+	os.parent_object = OSO_NONE;
+	if ( (id >= OS_OBJ_WCAP_BEGIN) && (id < OS_OBJ_WCAP_END) )
+		OLED_PrintString((OLED_STR_TypeDef)(CAPTION_STR_BEGIN + id - OS_OBJ_WCAP_BEGIN), 0);
+	
+	switch (id) {
+		case OSO_LOGO:
+			OLED_DrawImage(OLED_CORE_LOGO_ADDR);
+			break;
+			
+		case OSO_KEYBOARD:
+			os.parent_object = os.active_object;
+			OLED_PrintStringList(0, KEYBOARD_STR_BEGIN, KEYBOARD_STR_END);
+			break;
+			
+		case OSO_MAIN_MENU:
+			char_code = (os.normal_power) ? OLED_ECHAR_BATT_H : OLED_ECHAR_BATT_L;
+			OLED_SetChar(char_code, 20, 0);
+			c1 = MENU_STR_PG1_BEGIN + (os.menu_page_no * MENU_PG_SIZE);
+			c2 = c1 + MENU_PG_SIZE;
+			OLED_PrintStringList(1, c1, c2);
+			OLED_InverseArea(&os.cursor_pos, OLED_SIZE_X);
+			break;
+			
+		case OSO_MSGBOX_LOW_BATT:
+			Button_Enable(FALSE); //disable input for a while
+			os.parent_object = os.active_object;
+			OLED_PrintString(OLEDSTR_LOW_BATT, 2);
+			Vibro_Tone(VT_ALERT);
+			Task_Enable(ST_KEYLOCK, TRUE);
+			break;
+			
+		case OSO_ABOUT:
+			if (os.flashlight) {
+				OLED_DrawImage(OLED_FHASHLIGHT_KEYWORD);
+			} else {
+				OLED_PrintStringList(1, ABOUT_STR_BEGIN, ABOUT_STR_END);
+				OLED_SetChar(ASCII_DIGIT(CORE_VER_MAJOR), 18, 1);
+				OLED_SetChar(ASCII_DIGIT(CORE_VER_MINOR), 20, 1);
+				OLED_SetChar(ASCII_DIGIT(PCB_REVISION), 20, 2);
+			}
+			break;
+			
+		case OSO_APP_NOTES:
+			break;
+			
+		case OSO_APP_CALC:
+			break;
+			
+		case OSO_APP_CONFIG:
+			break;
+			
+		case OSO_APP_TIMER:
+			OLED_SetChar(ASCII_DIGIT(os.timer_min / 10), 8, 2);
+			OLED_SetChar(ASCII_DIGIT(os.timer_min % 10), 9, 2);
+			OLED_SetChar(':', 10, 2);
+			OLED_SetChar(ASCII_DIGIT(os.timer_sec / 10), 11, 2);
+			OLED_SetChar(ASCII_DIGIT(os.timer_sec % 10), 12, 2);
+			break;
+			
+		case OSO_APP_GAME:
+			break;
+			
+		case OSO_APP_SENSOR:
+			break;
+	}
+	
+	os.active_object = id;
+	os.update_obj_flag = FALSE;
+	OLED_Redraw();
+}
+
+
+void OS_Init(void)
+{
+	os.parent_object = OSO_NONE;
+	os.wait_object = OSO_NONE;
+	os.normal_power = TRUE;
+	os.btn_event_flag = FALSE;
+	os.update_obj_flag = FALSE;
+	OS_ShowObject(OSO_LOGO);
+	
+	enableInterrupts();
+	Vibro_Tone(VT_INIT);
+	SleepMs(OS_LOGO_TIME);
+	OS_ShowMainMenu();
+}
+
+
+void OS_ShowMainMenu(void)
+{
+	os.menu_page_no = 0;
+	os.cursor_pos.y = 1;
+	os.cursor_pos.x = 0;
+	OS_ShowObject(OSO_MAIN_MENU);
+}
+
+
+void OS_Update(void)
+{
+	if (os.btn_event_flag) {
+		OS_Event_ButtonClick(os.btne_index, os.btne_long_click);
+		os.btn_event_flag = FALSE;
+	}
+		
+	if (os.update_obj_flag)
+		OS_ShowObject(os.active_object);
+	
+	if ( (os.wait_object != OSO_NONE) && (os.parent_object == OSO_NONE) ) { //no other active child objects
+		OS_ShowObject(os.wait_object);
+		os.wait_object = OSO_NONE;
+	}
+}
+
+
+void OS_ResetTimerApp(void)
+{
+	os.timer_sec = 0;
+	os.timer_min_backup = os.timer_min = DataMemory_Read(OSOB_TIMER_MIN);
+	os.timer_en = FALSE;
+}
+
+
+void OS_CreateButtonEvent(uint8_t index, bool long_click)
+{
+	os.btne_index = index;
+	os.btne_long_click = long_click;
+	os.btn_event_flag = TRUE;
+}
+
+
+void OS_Event_ButtonClick(void)
+{
+	if ( (os.btne_long_click) && (os.btne_index == 0) && (os.active_object >= OS_APPS_BEGIN) && (os.active_object < OS_APPS_END) ) {
+		OS_ShowMainMenu();
+		goto btne_skip;
+	}
+		
+	switch (os.active_object) {
+		case OSO_MSGBOX_LOW_BATT:
+			OS_ShowObject(os.parent_object);
+			break;
+
+		case OSO_MAIN_MENU:
+			if (os.btne_long_click) {
+				if (os.btne_index == 0) {
+					os.flashlight = FALSE;
+					OS_ShowObject(OSO_ABOUT);
+				} else {
+					OS_ResetTimerApp();
+					OS_ShowObject(OS_APPS_BEGIN + (os.cursor_pos.y - 1) + (3*os.menu_page_no));
+				}
+			} else {
+				if (os.btne_index == 0)
+					--os.cursor_pos.y;
+				else
+					++os.cursor_pos.y;
+				if ( (os.cursor_pos.y == 0) || (os.cursor_pos.y > 3) ) {
+					os.menu_page_no = (os.menu_page_no == 0) ? 1 : 0;
+					os.cursor_pos.y = (index == 0) ? 3 : 1;
+				}
+			}
+			OS_UpdateActiveObject();
+			break;
+			
+		case OSO_ABOUT:
+			if (os.btne_long_click) {
+				os.flashlight = !os.flashlight;
+				OS_UpdateActiveObject();
+			} else {
+				OS_ShowMainMenu();
+			}
+			break;
+			
+			case OSO_APP_TIMER:
+				if (os.btne_long_click) {
+					os.timer_en = !os.timer_en;
+					os.timer_sec = 0; os.timer_min = os.timer_min_backup;
+				} else {
+					if (os.btne_index == 0) {
+						if ((--os.timer_min) == 0)
+							os.timer_min = 99;
+					} else {
+						if ((++os.timer_min) > 99)
+							os.timer_min = 1;
+					}
+					os.timer_min_backup = os.timer_min;
+					DataMemory_Write(OSOB_TIMER_MIN, os.timer_min);
+				}
+				OS_UpdateActiveObject();
+				break;
+	}
+	
+btne_skip:
+	if (os.btne_long_click)
+		Vibro_Pulse(75, TICKS8(50));
+}
+
+
+void OS_Event_TaskTick(uint8_t index)
+{
+	static bool last_pwr_state = TRUE;
+
+	switch (index) {
+			
+		case ST_UPDATE_SLOW:
+			WriteIO(&sys.io_led[LED_SYS_STATE], IO_Reverse);
+			if (os.active_object != OSO_LOGO) {
+				ReadIO(&sys.io_volt_mon, &os.normal_power);
+				if ( (os.normal_power != last_pwr_state) && (!os.normal_power) )
+					OS_ShowChildObject(OSO_MSGBOX_LOW_BATT);
+				last_pwr_state = os.normal_power;
+			}
+			if ( (os.active_object == OSO_APP_TIMER) && (os.timer_en) ) {
+				if ((--os.timer_sec) == 0xFF) {
+					os.timer_sec = 59;
+					if (os.timer_min == 0) {
+						OS_ResetTimerApp();
+						Vibro_Tone(VT_TIME_IS_UP);
+					} else {
+						--os.timer_min;
+					}
+				}
+				OS_UpdateActiveObject();
+			}
+			break;
+			
+		case ST_KEYLOCK:
+			Button_Enable(TRUE);
+			break;
+			
+		#ifdef USE_FULL_ASSERT
+		default:
+			assert_failed((uint8_t *)__FILE__, __LINE__);
+		#endif
+	}
+}
+
