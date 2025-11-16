@@ -1,0 +1,1 @@
+pc-image-decoder.exe core_logo.bmp

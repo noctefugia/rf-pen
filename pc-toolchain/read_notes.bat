@@ -1,0 +1,1 @@
+pc_eeprom_loader.exe read_dnotes

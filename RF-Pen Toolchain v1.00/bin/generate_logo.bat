@@ -1,0 +1,1 @@
+image_converter.exe core_logo.bmp
