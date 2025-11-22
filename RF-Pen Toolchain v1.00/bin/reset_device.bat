@@ -1,1 +1,0 @@
-eeprom_loader.exe reset

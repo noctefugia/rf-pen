@@ -1,1 +1,0 @@
-image_converter.exe core_font.bmp

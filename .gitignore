@@ -1,0 +1,58 @@
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Release files
+.release
+
+# Backup files
+*.bak
+*.a3d.bak
+*.m3d.bak
+
+# Compiled object files
+*.obj
+*.auto.obj
+
+# Precompiled headers
+*.pdb
+
+# Executables
+#*.exe
+
+# Build artifacts
+*.dep
+#*.stp
+*.res
+*.rsp
+*.manifest.xml
+*.ppx
+*.tag
+
+# IDE and editor files
+#*.stw
+*.wdb
+*.wed
+#*.ppj
+
+# TAGS files
+TAGS.txt
+TAGS_Filelist.txt
+
+# Shortcut files (Windows .lnk files)
+*.lnk
+
+# Spy files
+checkres.spy
+
+# Auto-generated files
+#*.auto.c
+#*.auto.h
+
+
+# Binary and intermediate build files
+**/Debug/
+**/Release/
+**/build/
+#*.hex
